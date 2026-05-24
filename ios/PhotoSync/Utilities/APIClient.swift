@@ -4,11 +4,19 @@ import UIKit
 class APIClient {
     static let shared = APIClient()
     
-    #if DEBUG
-    var baseURL = "http://40.83.73.103"
-    #else
-    var baseURL = "https://your-domain.com"
-    #endif
+    /// 从 Config.plist 读取服务器地址，若不存在则使用默认值
+    var baseURL: String {
+        if let path = Bundle.main.path(forResource: "Config", ofType: "plist"),
+           let dict = NSDictionary(contentsOfFile: path) as? [String: Any],
+           let url = dict["baseURL"] as? String, !url.isEmpty {
+            return url
+        }
+        #if DEBUG
+        return "http://localhost:8000"
+        #else
+        return "https://your-domain.com"
+        #endif
+    }
     
     private var token: String? {
         return KeychainHelper.shared.getToken()

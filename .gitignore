@@ -40,3 +40,6 @@ playground.xcworkspace
 
 # Runtime data (database, cache, uploaded files)
 data/
+
+# iOS local config (contains server IP / domain)
+ios/PhotoSync/Config.plist

@@ -57,15 +57,23 @@ Xcode → New Project → iOS App：
 把本目录下的所有 `.swift` 文件拖进 Xcode 项目。
 
 ### 3. 配置服务器地址
-编辑 `Utilities/APIClient.swift`：
 
-```swift
-#if DEBUG
-var baseURL = "http://40.83.73.103"   // ← 你的 VM IP
-#else
-var baseURL = "https://your-domain.com"
-#endif
-```
+1. 复制配置文件模板：
+   ```bash
+   cp PhotoSync/Config.plist.example PhotoSync/Config.plist
+   ```
+
+2. 编辑 `PhotoSync/Config.plist`，填入你的服务器地址：
+   ```xml
+   <dict>
+       <key>baseURL</key>
+       <string>http://your-vm-ip-or-domain.com</string>
+   </dict>
+   ```
+
+   或本地调试时用 `http://localhost:8000`。
+
+3. 在 Xcode 中，确保 `Config.plist` 已加入 **Build Phases → Copy Bundle Resources**。
 
 ### 4. 配置 Info.plist
 在 Xcode 中打开 `Info.plist`，添加：
