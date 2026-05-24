@@ -18,6 +18,7 @@ from storage import blob_storage
 from thumbnails import (
     get_or_create_thumbnail,
     get_thumbnail_bytes,
+    get_thumbnail_path,
     get_image_dimensions,
     get_exif_datetime,
 )
@@ -282,24 +283,39 @@ def get_thumbnail(
     if not photo:
         raise HTTPException(status_code=404, detail="Photo not found")
 
+    # 基于当前原图 checksum 计算期望的缩略图路径
+    expected_path = str(get_thumbnail_path(photo.checksum, size))
+
     thumb = db.execute(
         select(Thumbnail).where(Thumbnail.photo_id == photo_id, Thumbnail.size == size)
     ).scalar_one_or_none()
 
-    if thumb and os.path.exists(thumb.local_path):
-        return FileResponse(thumb.local_path, media_type="image/jpeg")
+    # 校验：数据库记录的路径和期望路径是否一致，文件是否存在
+    if thumb:
+        path_matches = thumb.local_path == expected_path
+        file_exists = path_matches and os.path.exists(thumb.local_path)
 
-    buf = io.BytesIO()
-    blob_storage.download_file(photo.original_path, buf)
-    thumb_bytes = get_thumbnail_bytes(buf.getvalue(), photo.checksum, size)
+        if path_matches and file_exists:
+            return FileResponse(thumb.local_path, media_type="image/jpeg")
 
-    cache_path = get_or_create_thumbnail(buf.getvalue(), photo.checksum, size)
+        # 不匹配或文件缺失：清理旧记录和旧文件，重新生成
+        if thumb.local_path and os.path.exists(thumb.local_path):
+            os.remove(thumb.local_path)
+        db.delete(thumb)
+        db.commit()
 
-    if not thumb:
-        thumb = Thumbnail(photo_id=photo_id, size=size, local_path=str(cache_path))
-        db.add(thumb)
-    else:
-        thumb.local_path = str(cache_path)
+    # 从 Blob 下载原图并生成缩略图
+    try:
+        buf = io.BytesIO()
+        blob_storage.download_file(photo.original_path, buf)
+        buf.seek(0)
+        cache_path = get_or_create_thumbnail(buf.getvalue(), photo.checksum, size)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"缩略图生成失败: {e}")
+
+    # 保存新的缩略图记录
+    new_thumb = Thumbnail(photo_id=photo_id, size=size, local_path=str(cache_path))
+    db.add(new_thumb)
     db.commit()
 
     return FileResponse(cache_path, media_type="image/jpeg")

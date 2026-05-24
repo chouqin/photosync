@@ -70,6 +70,11 @@ def get_or_create_thumbnail(data: bytes, checksum: str, size: int = 256) -> Path
     return cache_path
 
 
+def get_thumbnail_path(checksum: str, size: int) -> Path:
+    """Return the expected filesystem path for a thumbnail."""
+    return _get_cache_path(checksum, size)
+
+
 def get_thumbnail_bytes(data: bytes, checksum: str, size: int = 256) -> bytes:
     """Generate thumbnail and return raw bytes (without caching)."""
     if size not in SIZES:
