@@ -1,0 +1,52 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: photosync-backend
+    restart: unless-stopped
+    environment:
+      - AZURE_STORAGE_ACCOUNT=${AZURE_STORAGE_ACCOUNT}
+      - AZURE_STORAGE_KEY=${AZURE_STORAGE_KEY}
+      - AZURE_STORAGE_CONTAINER=${AZURE_STORAGE_CONTAINER:-photos}
+      - AZURE_STORAGE_TIER=${AZURE_STORAGE_TIER:-Cool}
+      - SECRET_KEY=${SECRET_KEY}
+      - PHOTOSYNC_PASSWORD=${PHOTOSYNC_PASSWORD:-family}
+      - DATABASE_URL=sqlite+aiosqlite:///app/data/db/photosync.db
+      - THUMBNAIL_CACHE_DIR=/app/data/cache
+      - THUMBNAIL_SIZES=${THUMBNAIL_SIZES:-256,512,1024}
+      - MAX_UPLOAD_SIZE_MB=${MAX_UPLOAD_SIZE_MB:-50}
+    volumes:
+      - ./data/db:/app/data/db
+      - ./data/cache:/app/data/cache
+    networks:
+      - photosync-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: photosync-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy-data:/data
+      - ./data/caddy-config:/config
+      - ./data/cache:/srv/thumbnails:ro
+    networks:
+      - photosync-net
+    depends_on:
+      - backend
+
+networks:
+  photosync-net:
+    driver: bridge

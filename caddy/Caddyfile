@@ -1,0 +1,54 @@
+# Replace photosync.yourdomain.com with your actual domain
+# If you don't have a domain yet, remove the domain line and use :80 for local testing
+
+photosync.yourdomain.com {
+    # Auto HTTPS via Let's Encrypt (requires port 443 open and domain pointing to VM)
+    # For local testing without domain, replace the line above with ":80"
+
+    # Proxy API requests to backend
+    reverse_proxy /api/* backend:8000 {
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Proxy health check
+    reverse_proxy /health backend:8000
+
+    # Serve thumbnails directly from disk (faster, reduces backend load)
+    # URL pattern: /thumbnails/{checksum_prefix}/{checksum}_{size}.jpg
+    handle /thumbnails/* {
+        root * /srv/thumbnails
+        file_server
+        header Cache-Control "public, max-age=2592000"  # 30 days cache
+    }
+
+    # Default: proxy everything else to backend
+    reverse_proxy backend:8000
+
+    # Logging
+    log {
+        output file /data/access.log {
+            roll_size 10MB
+            roll_keep 5
+        }
+    }
+
+    # Compression
+    encode gzip zstd
+}
+
+# Local testing without domain (uncomment if needed)
+# :80 {
+#     reverse_proxy /api/* backend:8000
+#     reverse_proxy /api/* backend:8000
+#     reverse_proxy /health backend:8000
+#     handle /thumbnails/* {
+#         root * /srv/thumbnails
+#         file_server
+#         header Cache-Control "public, max-age=2592000"
+#     }
+#     reverse_proxy backend:8000
+#     encode gzip zstd
+# }

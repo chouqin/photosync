@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#BDE0FE"/>
+      <stop offset="50%" stop-color="#CDB4DB"/>
+      <stop offset="100%" stop-color="#FFC8DD"/>
+    </linearGradient>
+    <linearGradient id="cloudGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8F9FA"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#A8A4CE" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="0" y="0" width="1024" height="1024" rx="230" ry="230" fill="url(#bg)"/>
+
+  <!-- Decorative circles -->
+  <circle cx="180" cy="220" r="60" fill="#FFFFFF" opacity="0.25"/>
+  <circle cx="850" cy="280" r="80" fill="#FFFFFF" opacity="0.2"/>
+  <circle cx="200" cy="780" r="100" fill="#FFFFFF" opacity="0.15"/>
+  <circle cx="850" cy="750" r="50" fill="#FFFFFF" opacity="0.2"/>
+
+  <!-- Cute cloud -->
+  <g filter="url(#shadow)">
+    <!-- Main cloud body -->
+    <ellipse cx="512" cy="540" rx="280" ry="170" fill="url(#cloudGrad)"/>
+    <circle cx="360" cy="480" r="110" fill="url(#cloudGrad)"/>
+    <circle cx="512" cy="430" r="130" fill="url(#cloudGrad)"/>
+    <circle cx="664" cy="480" r="110" fill="url(#cloudGrad)"/>
+  </g>
+
+  <!-- Photo frame inside cloud -->
+  <g transform="translate(512, 510)">
+    <!-- Frame -->
+    <rect x="-100" y="-80" width="200" height="150" rx="20" ry="20" fill="#FFC8DD" opacity="0.9"/>
+    <!-- Photo area -->
+    <rect x="-88" y="-68" width="176" height="126" rx="12" ry="12" fill="#FFFFFF"/>
+    <!-- Simple mountain/landscape -->
+    <path d="M-88 58 L-30 -10 L20 40 L60 -5 L88 35 L88 58 Z" fill="#BDE0FE" opacity="0.8"/>
+    <circle cx="45" cy="-35" r="14" fill="#FFC8DD" opacity="0.7"/>
+  </g>
+
+  <!-- Cute face on cloud -->
+  <g transform="translate(512, 560)">
+    <!-- Left eye -->
+    <ellipse cx="-70" cy="0" rx="10" ry="14" fill="#4A4A6A"/>
+    <!-- Right eye -->
+    <ellipse cx="70" cy="0" rx="10" ry="14" fill="#4A4A6A"/>
+    <!-- Blush -->
+    <ellipse cx="-110" cy="15" rx="20" ry="12" fill="#FFB7C5" opacity="0.6"/>
+    <ellipse cx="110" cy="15" rx="20" ry="12" fill="#FFB7C5" opacity="0.6"/>
+    <!-- Smile -->
+    <path d="M-25 20 Q0 38 25 20" stroke="#4A4A6A" stroke-width="5" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Sync arrows (small, cute) -->
+  <g transform="translate(720, 620)">
+    <path d="M-20 -10 A 25 25 0 1 1 20 -10" stroke="#CDB4DB" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <polygon points="15,-22 25,-5 8,-5" fill="#CDB4DB"/>
+  </g>
+
+  <!-- Sparkles -->
+  <g fill="#FFFFFF" opacity="0.9">
+    <path d="M320 350 Q320 370 300 370 Q320 370 320 390 Q320 370 340 370 Q320 370 320 350Z"/>
+    <path d="M700 400 Q700 415 685 415 Q700 415 700 430 Q700 415 715 415 Q700 415 700 400Z"/>
+    <path d="M260 600 Q260 610 250 610 Q260 610 260 620 Q260 610 270 610 Q260 610 260 600Z"/>
+    <path d="M760 550 Q760 565 745 565 Q760 565 760 580 Q760 565 775 565 Q760 565 760 550Z"/>
+  </g>
+
+  <!-- Tiny hearts floating -->
+  <g fill="#FF6B9D" opacity="0.7">
+    <path d="M280 480 C270 470, 255 470, 255 485 C255 500, 280 515, 280 515 C280 515, 305 500, 305 485 C305 470, 290 470, 280 480Z" transform="scale(0.6) translate(180, 300)"/>
+    <path d="M750 450 C740 440, 725 440, 725 455 C725 470, 750 485, 750 485 C750 485, 775 470, 775 455 C775 440, 760 440, 750 450Z" transform="scale(0.5) translate(750, 450)"/>
+  </g>
+</svg>
