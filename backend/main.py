@@ -2,10 +2,11 @@ import os
 import io
 import hashlib
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
 
@@ -22,7 +23,62 @@ from thumbnails import (
 
 settings = get_settings()
 
-app = FastAPI(title=settings.app_name)
+
+# ---------- Pydantic Response Models (for Swagger docs) ----------
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class PhotoDict(BaseModel):
+    id: str
+    filename: str
+    file_size: int
+    width: Optional[int] = None
+    height: Optional[int] = None
+    mime_type: Optional[str] = None
+    checksum: Optional[str] = None
+    device_id: Optional[str] = None
+    created_at: Optional[str] = None
+    taken_at: Optional[str] = None
+
+
+class PhotoListResponse(BaseModel):
+    items: List[PhotoDict]
+    page: int
+    page_size: int
+    total: int
+
+
+class UploadResponse(BaseModel):
+    id: str
+    duplicate: bool
+    photo: Optional[PhotoDict] = None
+
+
+class DeleteResponse(BaseModel):
+    deleted: bool
+
+
+class HealthResponse(BaseModel):
+    status: str
+
+
+# ---------- FastAPI App + Swagger Tags ----------
+
+tags_metadata = [
+    {"name": "认证", "description": "用户登录与 JWT Token 获取"},
+    {"name": "照片", "description": "照片的上传、浏览、下载与删除"},
+    {"name": "系统", "description": "健康检查等服务端点"},
+]
+
+app = FastAPI(
+    title=settings.app_name,
+    description="PhotoSync 家庭照片云同步后端 API",
+    version="1.0.0",
+    openapi_tags=tags_metadata,
+)
 router = APIRouter(prefix="/api")
 
 # Initialize DB on startup
@@ -33,7 +89,13 @@ def on_startup():
 
 # ---------- Auth ----------
 
-@router.post("/auth/token")
+@router.post(
+    "/auth/token",
+    tags=["认证"],
+    summary="用户登录",
+    response_model=TokenResponse,
+    response_description="登录成功，返回 JWT Token",
+)
 async def login(request: Request):
     try:
         data = await request.json()
@@ -51,10 +113,16 @@ async def login(request: Request):
 
 # ---------- Photos ----------
 
-@router.get("/photos")
+@router.get(
+    "/photos",
+    tags=["照片"],
+    summary="获取照片列表",
+    response_model=PhotoListResponse,
+    response_description="分页返回照片元数据列表",
+)
 def list_photos(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+    page: int = Query(1, ge=1, description="页码，从 1 开始"),
+    page_size: int = Query(50, ge=1, le=200, description="每页数量"),
     db: Session = Depends(get_db_sync),
     user_id: str = Depends(get_current_user),
 ):
@@ -78,10 +146,16 @@ def list_photos(
     }
 
 
-@router.post("/photos/upload")
+@router.post(
+    "/photos/upload",
+    tags=["照片"],
+    summary="上传照片",
+    response_model=UploadResponse,
+    response_description="上传成功返回照片信息；若重复则返回 duplicate=true",
+)
 def upload_photo(
-    file: UploadFile = File(...),
-    device_id: Optional[str] = None,
+    file: UploadFile = File(..., description="照片文件"),
+    device_id: Optional[str] = Query(None, description="设备标识"),
     db: Session = Depends(get_db_sync),
     user_id: str = Depends(get_current_user),
 ):
@@ -97,7 +171,7 @@ def upload_photo(
 
     existing = db.execute(select(Photo).where(Photo.checksum == checksum)).scalar_one_or_none()
     if existing:
-        return {"id": existing.id, "duplicate": True}
+        return {"id": existing.id, "duplicate": True, "photo": existing.to_dict()}
 
     mime_type = file.content_type or "application/octet-stream"
     width, height = get_image_dimensions(contents)
@@ -144,7 +218,13 @@ def upload_photo(
     return {"id": photo.id, "duplicate": False, "photo": photo.to_dict()}
 
 
-@router.get("/photos/{photo_id}")
+@router.get(
+    "/photos/{photo_id}",
+    tags=["照片"],
+    summary="获取单张照片元数据",
+    response_model=PhotoDict,
+    response_description="照片详细信息",
+)
 def get_photo(
     photo_id: str,
     db: Session = Depends(get_db_sync),
@@ -156,10 +236,15 @@ def get_photo(
     return photo.to_dict()
 
 
-@router.get("/photos/{photo_id}/thumbnail")
+@router.get(
+    "/photos/{photo_id}/thumbnail",
+    tags=["照片"],
+    summary="获取照片缩略图",
+    response_description="JPEG 缩略图",
+)
 def get_thumbnail(
     photo_id: str,
-    size: int = Query(256),
+    size: int = Query(256, description="缩略图尺寸（像素）"),
     db: Session = Depends(get_db_sync),
     user_id: str = Depends(get_current_user),
 ):
@@ -190,10 +275,15 @@ def get_thumbnail(
     return FileResponse(cache_path, media_type="image/jpeg")
 
 
-@router.get("/photos/{photo_id}/original")
+@router.get(
+    "/photos/{photo_id}/original",
+    tags=["照片"],
+    summary="获取原图",
+    response_description="原图文件，或 302 跳转到 SAS URL",
+)
 def get_original(
     photo_id: str,
-    redirect: bool = Query(True),
+    redirect: bool = Query(True, description="是否 302 跳转到 SAS URL"),
     db: Session = Depends(get_db_sync),
     user_id: str = Depends(get_current_user),
 ):
@@ -215,7 +305,13 @@ def get_original(
     )
 
 
-@router.delete("/photos/{photo_id}")
+@router.delete(
+    "/photos/{photo_id}",
+    tags=["照片"],
+    summary="删除照片",
+    response_model=DeleteResponse,
+    response_description="删除成功",
+)
 def delete_photo(
     photo_id: str,
     db: Session = Depends(get_db_sync),
@@ -240,7 +336,13 @@ def delete_photo(
 
 # ---------- Health ----------
 
-@app.get("/health")
+@app.get(
+    "/health",
+    tags=["系统"],
+    summary="健康检查",
+    response_model=HealthResponse,
+    response_description="服务正常运行",
+)
 def health():
     return {"status": "ok"}
 
