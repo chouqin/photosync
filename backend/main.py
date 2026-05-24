@@ -5,10 +5,11 @@ from datetime import datetime
 from typing import Optional, List
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse, JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from config import get_settings
 from models import init_db_sync, get_db_sync, Photo, Thumbnail
@@ -160,21 +161,36 @@ def upload_photo(
     user_id: str = Depends(get_current_user),
 ):
     if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
+        raise HTTPException(status_code=400, detail="未提供文件")
 
-    contents = file.file.read()
+    # 1. 读取文件
+    try:
+        contents = file.file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"读取文件失败: {e}")
+
+    # 2. 大小检查
     max_size = settings.max_upload_size_mb * 1024 * 1024
     if len(contents) > max_size:
-        raise HTTPException(status_code=413, detail=f"File too large, max {settings.max_upload_size_mb}MB")
+        raise HTTPException(status_code=413, detail=f"文件过大，最大允许 {settings.max_upload_size_mb}MB")
 
+    # 3. 计算 checksum 并查重
     checksum = hashlib.sha256(contents).hexdigest()
+    try:
+        existing = db.execute(select(Photo).where(Photo.checksum == checksum)).scalar_one_or_none()
+    except SQLAlchemyError as e:
+        raise HTTPException(status_code=500, detail=f"数据库查询失败: {e}")
 
-    existing = db.execute(select(Photo).where(Photo.checksum == checksum)).scalar_one_or_none()
     if existing:
         return {"id": existing.id, "duplicate": True, "photo": existing.to_dict()}
 
+    # 4. 解析图片元数据
     mime_type = file.content_type or "application/octet-stream"
-    width, height = get_image_dimensions(contents)
+    try:
+        width, height = get_image_dimensions(contents)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"无法解析图片: {e}")
+
     exif_date_str = get_exif_datetime(contents)
     taken_at = None
     if exif_date_str:
@@ -183,37 +199,51 @@ def upload_photo(
         except ValueError:
             pass
 
-    blob_path = blob_storage.upload_file(
-        io.BytesIO(contents),
-        filename=file.filename,
-        mime_type=mime_type,
-        file_size=len(contents),
-    )
-
-    photo = Photo(
-        filename=file.filename,
-        original_path=blob_path,
-        file_size=len(contents),
-        width=width,
-        height=height,
-        mime_type=mime_type,
-        checksum=checksum,
-        device_id=device_id,
-        taken_at=taken_at,
-    )
-    db.add(photo)
-    db.commit()
-    db.refresh(photo)
-
-    for size in [int(s) for s in settings.thumbnail_sizes.split(",") if s.strip()]:
-        thumb_path = get_or_create_thumbnail(contents, checksum, size)
-        thumb = Thumbnail(
-            photo_id=photo.id,
-            size=size,
-            local_path=str(thumb_path),
+    # 5. 上传到云存储
+    try:
+        blob_path = blob_storage.upload_file(
+            io.BytesIO(contents),
+            filename=file.filename,
+            mime_type=mime_type,
+            file_size=len(contents),
         )
-        db.add(thumb)
-    db.commit()
+    except Exception as e:
+        # 存储服务异常（Azure 连接失败、认证失败、容器不存在等）
+        raise HTTPException(status_code=502, detail=f"云存储上传失败: {e}")
+
+    # 6. 写入数据库
+    try:
+        photo = Photo(
+            filename=file.filename,
+            original_path=blob_path,
+            file_size=len(contents),
+            width=width,
+            height=height,
+            mime_type=mime_type,
+            checksum=checksum,
+            device_id=device_id,
+            taken_at=taken_at,
+        )
+        db.add(photo)
+        db.commit()
+        db.refresh(photo)
+    except SQLAlchemyError as e:
+        # 数据库写入失败，但文件已上传成功 —— 记录不一致，但先返回错误
+        raise HTTPException(status_code=500, detail=f"数据库写入失败: {e}")
+
+    # 7. 生成缩略图
+    try:
+        for size in [int(s) for s in settings.thumbnail_sizes.split(",") if s.strip()]:
+            thumb_path = get_or_create_thumbnail(contents, checksum, size)
+            thumb = Thumbnail(
+                photo_id=photo.id,
+                size=size,
+                local_path=str(thumb_path),
+            )
+            db.add(thumb)
+        db.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"缩略图生成失败: {e}")
 
     return {"id": photo.id, "duplicate": False, "photo": photo.to_dict()}
 
@@ -345,6 +375,25 @@ def delete_photo(
 )
 def health():
     return {"status": "ok"}
+
+
+# ---------- Global Exception Handlers ----------
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "数据库错误", "error": str(exc)},
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    # 兜底：未捕获的异常返回安全信息（不暴露堆栈）
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "服务器内部错误", "error": str(exc)},
+    )
 
 
 app.include_router(router)
