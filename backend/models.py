@@ -15,13 +15,22 @@ _db_path = settings.database_url.replace("sqlite+aiosqlite://", "").replace("sql
 # sqlite:///app/data/db/photosync.db -> /app/data/db/photosync.db (absolute path)
 
 def _sqlite_creator():
-    return sqlite3.connect(_db_path)
+    conn = sqlite3.connect(
+        _db_path,
+        check_same_thread=False,
+        timeout=30.0,
+    )
+    # WAL mode allows concurrent reads while a write is in progress
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    return conn
 
 engine = create_engine(
     "sqlite://",
     creator=_sqlite_creator,
     echo=settings.debug,
     future=True,
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(
